@@ -47,10 +47,11 @@ async def fetch_upstox_data(
             
             df = pd.DataFrame(
                 candle_data,
-                columns=['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'OI']  # Fixed column name
+                columns=['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'OI']  
             )
             df['Date'] = pd.to_datetime(df['Date']).dt.date
-            return df.to_dict(orient="records")
+            df = df.to_json(orient="records", date_format="iso")
+            return df
             
         except httpx.HTTPStatusError as e:
             return {"error": f"HTTP error: {e.response.status_code}"}
@@ -61,29 +62,58 @@ async def fetch_upstox_data(
         except Exception as e:
             return {"error": f"Unexpected error: {str(e)}"}
 
-@mcp.tool()
+@mcp.tool(
+    name="get_historical_candle",
+    description="""Get historical stock prices for NSE stocks through Upstox API. Returns OHLCV data in tabular format.
+Args:
+    symbol: str
+        The NSE stock symbol, e.g. "HDFCBANK"
+    from_date: str
+        Start date in YYYY-MM-DD format
+    to_date: str
+        End date in YYYY-MM-DD format
+    interval: str
+        Valid intervals: minute, 30minute, day, week, month
+        Default is "day"
+""",
+)
 async def get_historical_candle(
     symbol: str,
     from_date: str,
     to_date: str,
-    interval: str = "day"  # Added interval parameter with default
-) -> Union[list[dict[str, Any]], dict[str, str]]:
-    """
-    Get historical stock data from Upstox.
+    interval: str = "day"
+) -> str:
+    """Get historical stock data from Upstox.
 
     Args:
-        symbol: e.g. 'HDFCBANK' 
-        from_date: Start date in YYYY-MM-DD format
-        to_date: End date in YYYY-MM-DD format
-        interval: Time interval (default: 'day', options: 'minute', '30minute', 'day', 'week', 'month')
-
-    Returns:
-        List of candle data as dictionaries or an error dict.
+        symbol: str
+            The NSE stock symbol, e.g. "HDFCBANK"
+        from_date: str
+            Start date in YYYY-MM-DD format
+        to_date: str
+            End date in YYYY-MM-DD format
+        interval: str
+            Valid intervals: minute, 30minute, day, week, month
+            Default is "day"
     """
     instrument_key = get_instrument_key(symbol)
     if not instrument_key:
-        return {"error": "Invalid symbol or instrument key not found"}
-    return await fetch_upstox_data(instrument_key, from_date, to_date, interval)
+        return f"Error: Invalid symbol {symbol} or instrument key not found"
+
+    try:
+        result = await fetch_upstox_data(instrument_key, from_date, to_date, interval)
+        
+        if isinstance(result, dict) and "error" in result:
+            return f"Error: {result['error']}"
+
+        # Convert JSON string back to DataFrame
+        df = pd.read_json(result)
+        df['Date'] = pd.to_datetime(df['Date']).dt.strftime('%Y-%m-%d')
+        df = df.round(2)
+        return df.to_dict(orient="records")
+
+    except Exception as e:
+        return f"Error: Failed to fetch data for {symbol}: {str(e)}"
 
 if __name__ == "__main__":
     print("Starting Upstox Ticker MCP service...")
