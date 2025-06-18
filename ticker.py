@@ -106,7 +106,6 @@ async def get_historical_candle(
         if isinstance(result, dict) and "error" in result:
             return f"Error: {result['error']}"
 
-        # Convert JSON string back to DataFrame
         df = pd.read_json(result)
         df['Date'] = pd.to_datetime(df['Date']).dt.strftime('%Y-%m-%d')
         df = df.round(2)
@@ -118,3 +117,4 @@ async def get_historical_candle(
 if __name__ == "__main__":
     print("Starting Upstox Ticker MCP service...")
     mcp.run(transport="stdio")
+
